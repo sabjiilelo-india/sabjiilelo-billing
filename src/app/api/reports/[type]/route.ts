@@ -27,8 +27,7 @@ export const GET = route<Ctx>(async (req, ctx) => {
   // Open-ended custom ranges would aggregate all history; require both ends.
   if (preset === "custom" && (!from || !to)) throw new DateRangeError("Choose both start and end dates");
 
-  const summary = await summarize(range);
-  const days = await dailySeries(range, tz);
+  const [summary, days] = await Promise.all([summarize(range), dailySeries(range, tz)]);
 
   let header: string[] = [];
   let rows: (string | number)[][] = [];

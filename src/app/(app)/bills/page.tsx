@@ -2,7 +2,9 @@
 
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
+import { useToast } from "@/components/Toast";
 import { api, formatDateTime, qs } from "@/lib/client";
+import { rupeesToPaise } from "@/lib/money";
 import { PAYMENT_LABELS } from "@/lib/constants";
 import { formatINR } from "@/lib/money";
 
@@ -27,6 +29,7 @@ const EMPTY = { q: "", range: "", from: "", to: "", minAmount: "", maxAmount: ""
 const PAGE_SIZE = 20;
 
 export default function BillsPage() {
+  const toast = useToast();
   const [f, setF] = useState(EMPTY);
   const [applied, setApplied] = useState(EMPTY);
   const [page, setPage] = useState(1);
@@ -57,7 +60,15 @@ export default function BillsPage() {
 
   function apply(e?: React.FormEvent) {
     e?.preventDefault();
-    if (f.from && f.to && f.from > f.to) return setError("Start date must not be after end date");
+    const fail = (m: string) => {
+      setError(m);
+      toast.error(m);
+    };
+    if (f.from && f.to && f.from > f.to) return fail("Start date must not be after end date");
+    const min = f.minAmount.trim() ? rupeesToPaise(f.minAmount) : null;
+    const max = f.maxAmount.trim() ? rupeesToPaise(f.maxAmount) : null;
+    if ((min !== null && Number.isNaN(min)) || (max !== null && Number.isNaN(max))) return fail("Enter valid amounts (numbers with up to 2 decimals)");
+    if (min !== null && max !== null && min > max) return fail("Minimum amount must not exceed maximum amount");
     setError("");
     setPage(1);
     setApplied(f);

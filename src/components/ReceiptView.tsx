@@ -1,12 +1,13 @@
-import { PAYMENT_LABELS } from "@/lib/constants";
+import { PAYMENT_LABELS, paperContentMm } from "@/lib/constants";
 import { formatNum } from "@/lib/money";
 import { formatDateTime } from "@/lib/client";
 import type { BillDto } from "@/lib/types";
 
 interface Props {
   bill: BillDto;
-  paperSize: 58 | 80;
+  paperSize: number;
   fontSize: number;
+  logo?: string;
 }
 
 const qtyText = (q: string | number) => String(Number(q));
@@ -21,21 +22,22 @@ function Row({ left, right, bold }: { left: string; right: string; bold?: boolea
 }
 
 /** Black-and-white thermal receipt. Width is the paper width; height grows with content. */
-export default function ReceiptView({ bill, paperSize, fontSize }: Props) {
+export default function ReceiptView({ bill, paperSize, fontSize, logo }: Props) {
   const shop = bill.shopSnapshot;
   const voided = bill.billStatus === "VOIDED";
-  const width = paperSize === 58 ? "48mm" : "72mm";
+  const width = `${paperContentMm(paperSize)}mm`;
+  const size = paperSize <= 58 ? Math.min(fontSize, 11) : paperSize >= 148 ? fontSize + 2 : fontSize;
   const discountTotal = bill.itemDiscount + bill.billDiscount;
 
   return (
     <div
-      style={{ width, fontSize: `${paperSize === 58 ? Math.min(fontSize, 11) : fontSize}px`, lineHeight: 1.3 }}
+      style={{ width, fontSize: `${size}px`, lineHeight: 1.3 }}
       className="mx-auto bg-white p-0 font-mono text-black"
     >
       <div className="text-center">
-        {shop.logo && (
+        {logo && (
           // eslint-disable-next-line @next/next/no-img-element
-          <img src={shop.logo} alt="" className="mx-auto mb-1 max-h-14 max-w-full object-contain grayscale" />
+          <img src={logo} alt="" className="mx-auto mb-1 max-h-14 max-w-full object-contain grayscale" />
         )}
         <div className="break-words text-[1.2em] font-bold uppercase">{shop.shopName}</div>
         {shop.address && <div className="whitespace-pre-line break-words">{shop.address}</div>}

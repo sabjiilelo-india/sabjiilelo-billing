@@ -4,7 +4,6 @@ export interface ShopSnapshot {
   phone: string;
   email: string;
   gstin: string;
-  logo: string;
   footerMessage: string;
   timeZone: string;
 }
@@ -74,7 +73,7 @@ export interface SettingsDto {
   taxEnabled: boolean;
   taxMode: "INTRA" | "INTER";
   roundOff: boolean;
-  paperSize: 58 | 80;
+  paperSize: number;
   printerName: string;
   fontSize: number;
   copies: number;

@@ -31,8 +31,7 @@ export function errorResponse(e: unknown) {
   if (e instanceof CalcError || e instanceof DateRangeError) return NextResponse.json({ error: e.message }, { status: 400 });
   if (e instanceof ZodError) {
     const first = e.issues[0];
-    const where = first?.path.length ? `${first.path.join(".")}: ` : "";
-    return NextResponse.json({ error: `${where}${first?.message ?? "Invalid input"}` }, { status: 400 });
+    return NextResponse.json({ error: first?.message ?? "Invalid input", field: first?.path.join(".") ?? null }, { status: 400 });
   }
   console.error(e);
   return NextResponse.json({ error: "Something went wrong. Please try again." }, { status: 500 });

@@ -1,7 +1,7 @@
 "use client";
 
 export class ApiError extends Error {
-  constructor(public status: number, message: string) {
+  constructor(public status: number, message: string, public field: string | null = null) {
     super(message);
   }
 }
@@ -18,11 +18,14 @@ export async function api<T = unknown>(url: string, init?: RequestInit & { json?
     throw new ApiError(0, "Cannot reach the server. Check your connection and try again.");
   }
   if (res.status === 401 && !url.startsWith("/api/auth/login")) {
-    window.location.href = "/login?next=" + encodeURIComponent(window.location.pathname);
+    window.location.href = "/login?msg=expired&next=" + encodeURIComponent(window.location.pathname);
     throw new ApiError(401, "Session expired");
   }
   const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new ApiError(res.status, (data as { error?: string }).error ?? "Request failed");
+  if (!res.ok) {
+    const d = data as { error?: string; field?: string | null };
+    throw new ApiError(res.status, d.error ?? "Request failed", d.field ?? null);
+  }
   return data as T;
 }
 

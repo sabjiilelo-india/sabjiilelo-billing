@@ -5,18 +5,19 @@ import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import ReceiptView from "@/components/ReceiptView";
 import { api } from "@/lib/client";
+import { PAPER_SIZES } from "@/lib/constants";
 import type { BillDto, SettingsDto } from "@/lib/types";
 
 function Preview({ id }: { id: string }) {
   const auto = useSearchParams().get("auto") === "1";
   const [bill, setBill] = useState<BillDto | null>(null);
   const [settings, setSettings] = useState<SettingsDto | null>(null);
-  const [paper, setPaper] = useState<58 | 80>(80);
+  const [paper, setPaper] = useState<number>(80);
   const [error, setError] = useState("");
   const autoDone = useRef(false);
 
   useEffect(() => {
-    Promise.all([api<{ bill: BillDto }>(`/api/bills/${id}`), api<{ settings: SettingsDto }>("/api/settings")])
+    Promise.all([api<{ bill: BillDto }>(`/api/bills/${id}`), api<{ settings: SettingsDto }>("/api/settings?full=1")])
       .then(([b, s]) => {
         setBill(b.bill);
         setSettings(s.settings);
@@ -49,9 +50,8 @@ function Preview({ id }: { id: string }) {
       <style>{`@media print { @page { size: ${paper}mm auto; margin: 0; } #receipt-root { width: ${paper}mm; } }`}</style>
       <div className="flex flex-wrap items-center gap-2 print:hidden">
         <h1 className="page-title mr-auto">Receipt {bill.invoiceNumber}</h1>
-        <select className="!w-auto" value={paper} onChange={(e) => setPaper(Number(e.target.value) as 58 | 80)}>
-          <option value={80}>80 mm</option>
-          <option value={58}>58 mm</option>
+        <select className="!w-auto" value={paper} onChange={(e) => setPaper(Number(e.target.value))}>
+          {PAPER_SIZES.map((p) => <option key={p.value} value={p.value}>{p.label}</option>)}
         </select>
         <button className="btn btn-primary" onClick={print}>Print{copies > 1 ? ` (${copies} copies)` : ""}</button>
         <Link className="btn" href={`/bills/${id}`}>Bill details</Link>
@@ -64,7 +64,7 @@ function Preview({ id }: { id: string }) {
         <div id="receipt-root">
           {Array.from({ length: copies }).map((_, i) => (
             <div key={i} className="receipt-copy">
-              <ReceiptView bill={bill} paperSize={paper} fontSize={settings.fontSize} />
+              <ReceiptView bill={bill} paperSize={paper} fontSize={settings.fontSize} logo={settings.logo} />
             </div>
           ))}
         </div>

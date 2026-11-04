@@ -1,11 +1,26 @@
 import { z } from "zod";
+import { PAPER_VALUES } from "./constants";
 import { prisma } from "./db";
 
-export async function getSettings() {
-  return prisma.shopSettings.upsert({ where: { id: 1 }, create: { id: 1 }, update: {} });
+import type { ShopSettings } from "@prisma/client";
+
+export type Settings = ShopSettings;
+
+// Settings are read on nearly every request but change rarely; keep them briefly in memory.
+const TTL_MS = 30_000;
+let cache: { value: Settings; at: number } | null = null;
+
+export async function getSettings(): Promise<Settings> {
+  if (cache && Date.now() - cache.at < TTL_MS) return cache.value;
+  let value = await prisma.shopSettings.findUnique({ where: { id: 1 } });
+  if (!value) value = await prisma.shopSettings.upsert({ where: { id: 1 }, create: { id: 1 }, update: {} });
+  cache = { value, at: Date.now() };
+  return value;
 }
 
-export type Settings = Awaited<ReturnType<typeof getSettings>>;
+export function invalidateSettings() {
+  cache = null;
+}
 
 const GSTIN = /^\d{2}[A-Z]{5}\d{4}[A-Z][1-9A-Z]Z[0-9A-Z]$/;
 
@@ -22,7 +37,11 @@ export const settingsSchema = z
   .object({
     shopName: z.string().trim().min(1, "Shop name is required").max(80),
     address: z.string().trim().max(200).default(""),
-    phone: z.string().trim().max(20).default(""),
+    phone: z
+      .string()
+      .trim()
+      .default("")
+      .refine((v) => v === "" || (/^[0-9+()\s-]+$/.test(v) && v.replace(/\D/g, "").length >= 7 && v.replace(/\D/g, "").length <= 15), "Enter a valid phone number"),
     email: z.union([z.literal(""), z.string().trim().email("Invalid email")]).default(""),
     gstin: z.string().trim().toUpperCase().max(15).default(""),
     logo: z
@@ -37,10 +56,10 @@ export const settingsSchema = z
     taxEnabled: z.boolean().default(false),
     taxMode: z.enum(["INTRA", "INTER"]).default("INTRA"),
     roundOff: z.boolean().default(true),
-    paperSize: z.union([z.literal(58), z.literal(80)]).default(80),
+    paperSize: z.number().refine((v) => PAPER_VALUES.includes(v), "Unsupported paper size").default(80),
     printerName: z.string().trim().max(80).default(""),
-    fontSize: z.number().int().min(8).max(20).default(12),
-    copies: z.number().int().min(1).max(5).default(1),
+    fontSize: z.number("Enter a font size").int().min(8, "Font size must be between 8 and 20").max(20, "Font size must be between 8 and 20").default(12),
+    copies: z.number("Enter the number of copies").int().min(1, "Copies must be between 1 and 5").max(5, "Copies must be between 1 and 5").default(1),
     autoPreview: z.boolean().default(true),
   })
   .superRefine((v, ctx) => {
@@ -56,7 +75,6 @@ export function shopSnapshot(s: Settings) {
     phone: s.phone,
     email: s.email,
     gstin: s.gstin,
-    logo: s.logo,
     footerMessage: s.footerMessage,
     timeZone: s.timeZone,
   };

@@ -7,21 +7,30 @@ const completedInRange = (r: Range): Prisma.BillWhereInput => ({
   invoiceDate: { gte: r.gte, lt: r.lt },
 });
 
+type SumRow = Record<string, bigint | null>;
+
 export async function summarize(r: Range) {
-  const [done, voided, byMethod] = await Promise.all([
-    prisma.bill.aggregate({
-      where: completedInRange(r),
-      _count: true,
-      _sum: {
-        subtotal: true, itemDiscount: true, billDiscount: true, taxAmount: true, cgst: true, sgst: true, igst: true,
-        otherCharges: true, roundOff: true, grandTotal: true, amountPaid: true, balanceDue: true,
-      },
-    }),
-    prisma.bill.aggregate({
-      where: { billStatus: "VOIDED", invoiceDate: { gte: r.gte, lt: r.lt } },
-      _count: true,
-      _sum: { grandTotal: true },
-    }),
+  // One aggregate query (completed + voided together) and one grouped query, run in parallel.
+  const [aggRows, byMethod] = await Promise.all([
+    prisma.$queryRaw<SumRow[]>`
+      SELECT
+        count(*) FILTER (WHERE "billStatus" = 'COMPLETED') AS done,
+        count(*) FILTER (WHERE "billStatus" = 'VOIDED') AS voided,
+        sum("grandTotal") FILTER (WHERE "billStatus" = 'VOIDED') AS "voidedValue",
+        sum("subtotal") FILTER (WHERE "billStatus" = 'COMPLETED') AS subtotal,
+        sum("itemDiscount") FILTER (WHERE "billStatus" = 'COMPLETED') AS "itemDiscount",
+        sum("billDiscount") FILTER (WHERE "billStatus" = 'COMPLETED') AS "billDiscount",
+        sum("taxAmount") FILTER (WHERE "billStatus" = 'COMPLETED') AS tax,
+        sum("cgst") FILTER (WHERE "billStatus" = 'COMPLETED') AS cgst,
+        sum("sgst") FILTER (WHERE "billStatus" = 'COMPLETED') AS sgst,
+        sum("igst") FILTER (WHERE "billStatus" = 'COMPLETED') AS igst,
+        sum("otherCharges") FILTER (WHERE "billStatus" = 'COMPLETED') AS "otherCharges",
+        sum("roundOff") FILTER (WHERE "billStatus" = 'COMPLETED') AS "roundOff",
+        sum("grandTotal") FILTER (WHERE "billStatus" = 'COMPLETED') AS net,
+        sum("amountPaid") FILTER (WHERE "billStatus" = 'COMPLETED') AS collected,
+        sum("balanceDue") FILTER (WHERE "billStatus" = 'COMPLETED') AS outstanding
+      FROM "Bill"
+      WHERE "invoiceDate" >= ${r.gte} AND "invoiceDate" < ${r.lt}`,
     prisma.bill.groupBy({
       by: ["paymentMethod"],
       where: completedInRange(r),
@@ -29,25 +38,26 @@ export async function summarize(r: Range) {
       _sum: { amountPaid: true, grandTotal: true },
     }),
   ]);
-  const s = done._sum;
+  const a = aggRows[0];
+  const n = (k: string) => Number(a[k] ?? 0);
   return {
-    totalInvoices: done._count + voided._count,
-    completedInvoices: done._count,
-    cancelledInvoices: voided._count,
-    cancelledValue: voided._sum.grandTotal ?? 0,
-    grossSales: s.subtotal ?? 0,
-    discounts: (s.itemDiscount ?? 0) + (s.billDiscount ?? 0),
-    itemDiscount: s.itemDiscount ?? 0,
-    billDiscount: s.billDiscount ?? 0,
-    tax: s.taxAmount ?? 0,
-    cgst: s.cgst ?? 0,
-    sgst: s.sgst ?? 0,
-    igst: s.igst ?? 0,
-    otherCharges: s.otherCharges ?? 0,
-    roundOff: s.roundOff ?? 0,
-    netSales: s.grandTotal ?? 0,
-    collected: s.amountPaid ?? 0,
-    outstanding: s.balanceDue ?? 0,
+    totalInvoices: n("done") + n("voided"),
+    completedInvoices: n("done"),
+    cancelledInvoices: n("voided"),
+    cancelledValue: n("voidedValue"),
+    grossSales: n("subtotal"),
+    discounts: n("itemDiscount") + n("billDiscount"),
+    itemDiscount: n("itemDiscount"),
+    billDiscount: n("billDiscount"),
+    tax: n("tax"),
+    cgst: n("cgst"),
+    sgst: n("sgst"),
+    igst: n("igst"),
+    otherCharges: n("otherCharges"),
+    roundOff: n("roundOff"),
+    netSales: n("net"),
+    collected: n("collected"),
+    outstanding: n("outstanding"),
     byMethod: byMethod.map((m) => ({
       method: m.paymentMethod,
       bills: m._count,

@@ -17,3 +17,22 @@ export const PAYMENT_LABELS: Record<string, string> = {
 export const TAX_RATES = [0, 500, 1200, 1800, 2800] as const;
 
 export const SESSION_COOKIE = "tb_session";
+
+/** Supported print widths in mm (content = printable width inside the paper). Height is always automatic. */
+export const PAPER_SIZES = [
+  { value: 58, label: "58 mm thermal", content: 48 },
+  { value: 76, label: "76 mm thermal", content: 66 },
+  { value: 80, label: "80 mm thermal", content: 72 },
+  { value: 112, label: "112 mm thermal", content: 104 },
+  { value: 148, label: "A5 (148 mm wide)", content: 132 },
+  { value: 210, label: "A4 (210 mm wide)", content: 190 },
+] as const;
+
+export const PAPER_VALUES: number[] = PAPER_SIZES.map((p) => p.value);
+
+export function paperContentMm(size: number) {
+  return PAPER_SIZES.find((p) => p.value === size)?.content ?? 72;
+}
+
+/** Units that can only be sold in whole numbers. */
+export const WHOLE_UNITS = ["Piece", "Packet", "Pouch", "Box", "Carton"];

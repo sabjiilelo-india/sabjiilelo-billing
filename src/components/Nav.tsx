@@ -4,6 +4,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState } from "react";
+import { ConfirmDialog, useToast } from "./Toast";
 
 const LINKS = [
   { href: "/dashboard", label: "Dashboard", icon: "M3 12l9-9 9 9M5 10v10h5v-6h4v6h5V10" },
@@ -25,9 +26,21 @@ export default function Nav({ username }: { username: string }) {
   const path = usePathname();
   const [open, setOpen] = useState(false);
 
+  const toast = useToast();
+  const [confirming, setConfirming] = useState(false);
+  const [loggingOut, setLoggingOut] = useState(false);
+
   async function logout() {
-    await fetch("/api/auth/logout", { method: "POST" });
-    window.location.href = "/login";
+    setLoggingOut(true);
+    try {
+      const res = await fetch("/api/auth/logout", { method: "POST" });
+      if (!res.ok) throw new Error();
+      window.location.href = "/login?msg=loggedout";
+    } catch {
+      setLoggingOut(false);
+      setConfirming(false);
+      toast.error("Could not log out. Check your connection and try again.");
+    }
   }
 
   const links = (
@@ -54,12 +67,22 @@ export default function Nav({ username }: { username: string }) {
         <span className="flex h-8 w-8 items-center justify-center rounded-full bg-brand-100 font-semibold uppercase text-brand-800">{username.charAt(0)}</span>
         <span className="truncate text-slate-700">{username}</span>
       </div>
-      <button className="btn w-full" onClick={logout}>Logout</button>
+      <button className="btn w-full" onClick={() => setConfirming(true)}>Logout</button>
     </div>
   );
 
   return (
     <>
+      {confirming && (
+        <ConfirmDialog
+          title="Log out?"
+          message="You will need to sign in again to continue billing. Any unsaved bill on screen is kept as a draft on this device."
+          confirmLabel="Log out"
+          busy={loggingOut}
+          onConfirm={logout}
+          onCancel={() => setConfirming(false)}
+        />
+      )}
       {/* Desktop sidebar */}
       <aside className="fixed inset-y-0 left-0 hidden w-64 flex-col gap-6 border-r bg-white p-4 print:hidden md:flex">
         <Link href="/dashboard" className="block px-2 pt-2">

@@ -2,6 +2,7 @@
 
 import { use, useCallback, useEffect, useState } from "react";
 import Link from "next/link";
+import { useToast } from "@/components/Toast";
 import { api, formatDateTime } from "@/lib/client";
 import { PAYMENT_LABELS } from "@/lib/constants";
 import { formatINR } from "@/lib/money";
@@ -17,12 +18,14 @@ interface Audit {
 
 export default function BillDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
+  const toast = useToast();
   const [bill, setBill] = useState<BillDto | null>(null);
   const [audits, setAudits] = useState<Audit[]>([]);
   const [error, setError] = useState("");
   const [voiding, setVoiding] = useState(false);
   const [reason, setReason] = useState("");
   const [busy, setBusy] = useState(false);
+  const [reasonError, setReasonError] = useState("");
 
   const load = useCallback(() => {
     api<{ bill: BillDto; audits: Audit[] }>(`/api/bills/${id}`)
@@ -32,16 +35,23 @@ export default function BillDetailPage({ params }: { params: Promise<{ id: strin
   useEffect(load, [load]);
 
   async function doVoid() {
-    if (reason.trim().length < 3) return setError("Enter a cancellation reason (at least 3 characters)");
+    if (reason.trim().length < 3) {
+      setReasonError("Enter a cancellation reason (at least 3 characters)");
+      return;
+    }
+    setReasonError("");
     setBusy(true);
     setError("");
     try {
       await api(`/api/bills/${id}/void`, { method: "POST", json: { reason } });
       setVoiding(false);
       setReason("");
+      toast.success("Bill voided. It stays in history marked as voided.");
       load();
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed");
+      const m = e instanceof Error ? e.message : "Could not void the bill";
+      setError(m);
+      toast.error(m);
     } finally {
       setBusy(false);
     }
@@ -76,7 +86,8 @@ export default function BillDetailPage({ params }: { params: Promise<{ id: strin
         <div className="card space-y-2 border-red-300">
           <p className="text-sm font-medium">Void {bill.invoiceNumber}? This cannot be undone. The invoice stays in history marked as voided.</p>
           <label>Reason</label>
-          <input value={reason} onChange={(e) => setReason(e.target.value)} maxLength={300} autoFocus />
+          <input value={reason} aria-invalid={!!reasonError} className={reasonError ? "!border-red-500" : ""} onChange={(e) => { setReason(e.target.value); setReasonError(""); }} maxLength={300} autoFocus />
+          {reasonError && <p className="text-xs text-red-600">{reasonError}</p>}
           <div className="flex gap-2">
             <button className="btn btn-danger" disabled={busy} onClick={doVoid}>{busy ? "Voiding..." : "Confirm void"}</button>
             <button className="btn" onClick={() => { setVoiding(false); setError(""); }}>Keep bill</button>

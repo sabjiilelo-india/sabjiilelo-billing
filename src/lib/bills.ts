@@ -1,7 +1,7 @@
 import { Prisma } from "@prisma/client";
 import { z } from "zod";
 import { calcBill } from "./calc";
-import { PAYMENT_METHODS } from "./constants";
+import { PAYMENT_METHODS, WHOLE_UNITS } from "./constants";
 import { HttpError } from "./api";
 import { audit } from "./audit";
 import { prisma } from "./db";
@@ -24,20 +24,31 @@ export const billSchema = z.object({
       z.object({
         itemName: z.string().trim().min(1, "Item name is required").max(120),
         itemCode: z.string().trim().max(40).default(""),
-        quantity: z.number().positive("Quantity must be greater than zero"),
+        quantity: z
+          .number()
+          .positive("Quantity must be greater than zero")
+          .max(10000, "Quantity is too large")
+          .refine((q) => Math.abs(q * 1000 - Math.round(q * 1000)) < 1e-6, "Quantity can have at most 3 decimals"),
         unit: z.string().trim().min(1).max(20),
-        unitPrice: int.min(0, "Rate must not be negative"),
+        unitPrice: int.min(1, "Rate must be greater than zero").max(100_000_000, "Rate is too large"),
         discountType: z.enum(["FIXED", "PERCENT"]).default("FIXED"),
         discountValue: int.min(0).default(0),
         taxRate: int.min(0).max(10000).default(0),
       }),
     )
-    .min(1, "Add at least one item"),
+    .min(1, "Add at least one item")
+    .max(200, "A bill can have at most 200 items"),
   billDiscountType: z.enum(["FIXED", "PERCENT"]).default("FIXED"),
   billDiscountValue: int.min(0).default(0),
   otherCharges: int.min(0).default(0),
   paymentMethod: z.enum(PAYMENT_METHODS),
   amountPaid: int.min(0, "Payment must not be negative"),
+}).superRefine((b, ctx) => {
+  b.items.forEach((it, i) => {
+    if (WHOLE_UNITS.includes(it.unit) && !Number.isInteger(it.quantity)) {
+      ctx.addIssue({ code: "custom", path: ["items", i, "quantity"], message: `${it.unit} must be a whole number` });
+    }
+  });
 });
 
 export type BillInputBody = z.infer<typeof billSchema>;
@@ -56,7 +67,10 @@ async function nextInvoiceNumber(tx: Prisma.TransactionClient, prefix: string) {
 }
 
 export async function createBill(body: BillInputBody, userId: string) {
-  const existing = await prisma.bill.findUnique({ where: { idempotencyKey: body.idempotencyKey }, include: billInclude });
+  const existing = await prisma.bill.findUnique({
+    where: { idempotencyKey: body.idempotencyKey },
+    select: { id: true, invoiceNumber: true },
+  });
   if (existing) return { bill: existing, duplicate: true };
 
   const settings = await getSettings();
@@ -101,28 +115,30 @@ export async function createBill(body: BillInputBody, userId: string) {
           paymentStatus: result.paymentStatus,
           taxEnabled: settings.taxEnabled,
           createdById: userId,
-          items: {
-            create: body.items.map((it, idx) => ({
-              position: idx,
-              itemName: it.itemName,
-              itemCode: it.itemCode,
-              quantity: it.quantity,
-              unit: it.unit,
-              unitPrice: it.unitPrice,
-              discountType: it.discountType,
-              discountValue: it.discountValue,
-              discountAmount: result.items[idx].discountAmount,
-              taxRate: settings.taxEnabled ? it.taxRate : 0,
-              grossAmount: result.items[idx].grossAmount,
-              taxableAmount: result.items[idx].taxableAmount,
-              taxAmount: result.items[idx].taxAmount,
-              lineTotal: result.items[idx].lineTotal,
-            })),
-          },
-          payments: result.amountPaid > 0 ? { create: [{ method: body.paymentMethod, amount: result.amountPaid }] } : undefined,
         },
-        include: billInclude,
       });
+      await tx.billItem.createMany({
+        data: body.items.map((it, idx) => ({
+          billId: created.id,
+          position: idx,
+          itemName: it.itemName,
+          itemCode: it.itemCode,
+          quantity: it.quantity,
+          unit: it.unit,
+          unitPrice: it.unitPrice,
+          discountType: it.discountType,
+          discountValue: it.discountValue,
+          discountAmount: result.items[idx].discountAmount,
+          taxRate: settings.taxEnabled ? it.taxRate : 0,
+          grossAmount: result.items[idx].grossAmount,
+          taxableAmount: result.items[idx].taxableAmount,
+          taxAmount: result.items[idx].taxAmount,
+          lineTotal: result.items[idx].lineTotal,
+        })),
+      });
+      if (result.amountPaid > 0) {
+        await tx.payment.create({ data: { billId: created.id, method: body.paymentMethod, amount: result.amountPaid } });
+      }
       await audit("BILL_CREATED", "Bill", created.id, userId, { invoiceNumber, grandTotal: created.grandTotal }, tx);
       return created;
     }, { maxWait: 20000, timeout: 30000 });
@@ -130,7 +146,10 @@ export async function createBill(body: BillInputBody, userId: string) {
   } catch (e) {
     // A concurrent request with the same idempotency key won the race.
     if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2002") {
-      const again = await prisma.bill.findUnique({ where: { idempotencyKey: body.idempotencyKey }, include: billInclude });
+      const again = await prisma.bill.findUnique({
+        where: { idempotencyKey: body.idempotencyKey },
+        select: { id: true, invoiceNumber: true },
+      });
       if (again) return { bill: again, duplicate: true };
     }
     throw e;
