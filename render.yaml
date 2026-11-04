@@ -1,20 +1,17 @@
-databases:
-  - name: thermal-billing-db
-    plan: free
-    databaseName: thermal_billing
-
 services:
   - type: web
-    name: thermal-billing
+    name: sabjiilelo-billing
     runtime: node
-    buildCommand: npm ci && npx prisma migrate deploy && npm run build
+    region: singapore # keep next to the Neon database (ap-southeast-1)
+    plan: free
+    # --include=dev: TypeScript and Tailwind are devDependencies but are needed by `next build`.
+    buildCommand: npm ci --include=dev && npx prisma migrate deploy && npm run build
     startCommand: npm start
+    healthCheckPath: /login
     envVars:
-      - key: DATABASE_URL
-        fromDatabase:
-          name: thermal-billing-db
-          property: connectionString
-      - key: SESSION_SECRET
-        generateValue: true
       - key: NODE_ENV
         value: production
+      - key: DATABASE_URL
+        sync: false # paste your Neon connection string in the Render dashboard
+      - key: SESSION_SECRET
+        generateValue: true
