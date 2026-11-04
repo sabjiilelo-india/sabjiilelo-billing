@@ -1,0 +1,179 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  ADMIN
+  STAFF
+}
+
+model Admin {
+  id           String    @id @default(cuid())
+  username     String    @unique
+  passwordHash String
+  role         Role      @default(ADMIN)
+  isActive     Boolean   @default(true)
+  lastLoginAt  DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+  bills        Bill[]
+}
+
+model ShopSettings {
+  id             Int      @id @default(1)
+  shopName       String   @default("My Shop")
+  address        String   @default("")
+  phone          String   @default("")
+  email          String   @default("")
+  gstin          String   @default("")
+  logo           String   @default("")
+  footerMessage  String   @default("Thank you! Visit again.")
+  invoicePrefix  String   @default("INV-")
+  currency       String   @default("INR")
+  timeZone       String   @default("Asia/Kolkata")
+  defaultPayment String   @default("CASH")
+  taxEnabled     Boolean  @default(false)
+  taxMode        String   @default("INTRA") // INTRA = CGST+SGST, INTER = IGST
+  roundOff       Boolean  @default(true)
+  paperSize      Int      @default(80) // 58 | 80
+  printerName    String   @default("")
+  fontSize       Int      @default(12)
+  copies         Int      @default(1)
+  autoPreview    Boolean  @default(true)
+  updatedAt      DateTime @updatedAt
+}
+
+model InvoiceCounter {
+  scope        String   @id
+  lastSequence Int      @default(0)
+  updatedAt    DateTime @updatedAt
+}
+
+enum PaymentStatus {
+  PAID
+  PARTIAL
+  UNPAID
+}
+
+enum BillStatus {
+  COMPLETED
+  VOIDED
+}
+
+model Bill {
+  id              String        @id @default(cuid())
+  invoiceNumber   String        @unique
+  idempotencyKey  String        @unique
+  invoiceDate     DateTime      @default(now())
+  customerName    String        @default("")
+  customerMobile  String        @default("")
+  customerAddress String        @default("")
+  shopSnapshot    Json
+  subtotal        Int
+  itemDiscount    Int
+  billDiscount    Int
+  taxableAmount   Int
+  cgst            Int           @default(0)
+  sgst            Int           @default(0)
+  igst            Int           @default(0)
+  taxAmount       Int
+  otherCharges    Int
+  roundOff        Int
+  grandTotal      Int
+  paymentMethod   String
+  amountPaid      Int
+  balanceDue      Int
+  changeGiven     Int           @default(0)
+  paymentStatus   PaymentStatus
+  billStatus      BillStatus    @default(COMPLETED)
+  taxEnabled      Boolean       @default(false)
+  createdById     String
+  createdBy       Admin         @relation(fields: [createdById], references: [id])
+  voidReason      String?
+  voidedById      String?
+  voidedAt        DateTime?
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+  items           BillItem[]
+  payments        Payment[]
+  printLogs       PrintLog[]
+
+  @@index([invoiceDate])
+  @@index([customerMobile])
+  @@index([customerName])
+  @@index([billStatus, paymentStatus])
+  @@index([paymentMethod])
+}
+
+model BillItem {
+  id             String  @id @default(cuid())
+  billId         String
+  bill           Bill    @relation(fields: [billId], references: [id], onDelete: Restrict)
+  position       Int
+  productId      String?
+  itemName       String
+  itemCode       String  @default("")
+  quantity       Decimal @db.Decimal(14, 3)
+  unit           String
+  unitPrice      Int
+  discountType   String  @default("FIXED")
+  discountValue  Int     @default(0)
+  discountAmount Int     @default(0)
+  taxRate        Int     @default(0)
+  grossAmount    Int
+  taxableAmount  Int
+  taxAmount      Int
+  lineTotal      Int
+
+  @@index([billId])
+  @@index([itemName])
+  @@index([itemCode])
+}
+
+model Payment {
+  id        String   @id @default(cuid())
+  billId    String
+  bill      Bill     @relation(fields: [billId], references: [id], onDelete: Restrict)
+  method    String
+  amount    Int
+  createdAt DateTime @default(now())
+
+  @@index([billId])
+}
+
+model PrintLog {
+  id        String   @id @default(cuid())
+  billId    String
+  bill      Bill     @relation(fields: [billId], references: [id], onDelete: Restrict)
+  userId    String
+  paperSize Int
+  createdAt DateTime @default(now())
+
+  @@index([billId])
+}
+
+model AuditLog {
+  id        String   @id @default(cuid())
+  userId    String?
+  action    String
+  entity    String
+  entityId  String?
+  details   Json?
+  createdAt DateTime @default(now())
+
+  @@index([createdAt])
+  @@index([entity, entityId])
+}
+
+model LoginAttempt {
+  id        String   @id @default(cuid())
+  key       String
+  createdAt DateTime @default(now())
+
+  @@index([key, createdAt])
+}

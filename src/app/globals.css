@@ -1,0 +1,92 @@
+@import "tailwindcss";
+
+/* Sabjii Le Lo brand palette, taken from the logo (deep green + fresh lime). */
+@theme {
+  --color-brand-50: #f2f9ec;
+  --color-brand-100: #e0f1d0;
+  --color-brand-200: #c2e3a3;
+  --color-brand-300: #a0d56f;
+  --color-brand-400: #7ac943;
+  --color-brand-500: #5fb02f;
+  --color-brand-600: #3f8f2c;
+  --color-brand-700: #1f6b3a;
+  --color-brand-800: #17562f;
+  --color-brand-900: #0f3f22;
+}
+
+@layer base {
+  body {
+    @apply bg-slate-50 text-slate-900 antialiased;
+  }
+  input, select, textarea {
+    @apply w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-brand-600 focus:ring-2 focus:ring-brand-200;
+  }
+  input[type="checkbox"], input[type="radio"] {
+    @apply h-4 w-4 w-auto accent-brand-700;
+  }
+  input[type="file"] {
+    @apply px-2 py-1.5;
+  }
+  label {
+    @apply mb-1 block text-xs font-medium text-slate-600;
+  }
+}
+
+@layer components {
+  .page-title {
+    @apply text-2xl font-bold tracking-tight text-brand-900;
+  }
+  .btn {
+    @apply inline-flex items-center justify-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3.5 py-2 text-sm font-medium text-slate-800 shadow-sm transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50;
+  }
+  .btn-primary {
+    @apply border-brand-700 bg-brand-700 text-white hover:bg-brand-800;
+  }
+  .btn-danger {
+    @apply border-red-700 bg-red-700 text-white hover:bg-red-800;
+  }
+  .card {
+    @apply rounded-xl border border-slate-200 bg-white p-5 shadow-sm;
+  }
+  .card-title {
+    @apply mb-3 text-sm font-semibold uppercase tracking-wide text-slate-500;
+  }
+  .th {
+    @apply whitespace-nowrap px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500;
+  }
+  .td {
+    @apply px-4 py-3 text-sm;
+  }
+  .err {
+    @apply rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700;
+  }
+  .ok {
+    @apply rounded-lg border border-brand-200 bg-brand-50 px-3 py-2 text-sm text-brand-800;
+  }
+}
+
+/* Thermal receipt printing: only the receipt is visible, no page margins or headers. */
+@media print {
+  body {
+    background: #fff !important;
+  }
+  body * {
+    visibility: hidden;
+  }
+  #receipt-root,
+  #receipt-root * {
+    visibility: visible;
+  }
+  #receipt-root {
+    position: absolute;
+    left: 0;
+    top: 0;
+    margin: 0 !important;
+  }
+  .receipt-copy {
+    break-after: page;
+  }
+  .receipt-copy:last-child {
+    break-after: auto;
+  }
+}
