@@ -49,7 +49,7 @@ function Preview({ id }: { id: string }) {
   const copies = Math.max(1, settings.copies);
   return (
     <div className="space-y-4">
-      <style>{`@media print { @page { size: ${paper}mm auto; margin: 0; } #receipt-root { width: ${paper}mm; } }`}</style>
+      <style>{`@media print { @page { margin: 0; } #receipt-root { width: ${paper}mm; } }`}</style>
       <div className="flex flex-wrap items-center gap-2 print:hidden">
         <h1 className="page-title mr-auto">Receipt {bill.invoiceNumber}</h1>
         <select className="!w-auto" value={paper} onChange={(e) => setPaper(Number(e.target.value))}>
