@@ -58,21 +58,31 @@ export default function BillsPage() {
 
   useEffect(() => { load(); }, [load]);
 
+  const [submitted, setSubmitted] = useState(false);
+  const fe: Partial<Record<"from" | "to" | "minAmount" | "maxAmount" | "q", string>> = {};
+  const min = f.minAmount.trim() ? rupeesToPaise(f.minAmount) : null;
+  const max = f.maxAmount.trim() ? rupeesToPaise(f.maxAmount) : null;
+  if (f.q.length > 100) fe.q = "At most 100 characters";
+  if (f.from && f.to && f.from > f.to) fe.to = "End date must not be before start date";
+  if (min !== null && (Number.isNaN(min) || min < 0)) fe.minAmount = "Enter a valid amount";
+  if (max !== null && (Number.isNaN(max) || max < 0)) fe.maxAmount = "Enter a valid amount";
+  if (!fe.minAmount && !fe.maxAmount && min !== null && max !== null && min > max) fe.maxAmount = "Must not be less than minimum";
+
   function apply(e?: React.FormEvent) {
     e?.preventDefault();
-    const fail = (m: string) => {
-      setError(m);
-      toast.error(m);
-    };
-    if (f.from && f.to && f.from > f.to) return fail("Start date must not be after end date");
-    const min = f.minAmount.trim() ? rupeesToPaise(f.minAmount) : null;
-    const max = f.maxAmount.trim() ? rupeesToPaise(f.maxAmount) : null;
-    if ((min !== null && Number.isNaN(min)) || (max !== null && Number.isNaN(max))) return fail("Enter valid amounts (numbers with up to 2 decimals)");
-    if (min !== null && max !== null && min > max) return fail("Minimum amount must not exceed maximum amount");
+    setSubmitted(true);
+    const n = Object.keys(fe).length;
+    if (n) {
+      setError("");
+      toast.error(Object.values(fe)[0]!);
+      return;
+    }
     setError("");
     setPage(1);
     setApplied(f);
   }
+  const bad = (k: keyof typeof fe) => (submitted && fe[k] ? { "aria-invalid": true, className: "!border-red-500 focus:!ring-red-200" } : {});
+  const msg = (k: keyof typeof fe) => (submitted && fe[k] ? <p className="mt-1 text-xs text-red-600">{fe[k]}</p> : null);
   const set = (k: keyof typeof EMPTY, v: string) => setF((p) => ({ ...p, [k]: v }));
   const pages = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
@@ -86,7 +96,7 @@ export default function BillsPage() {
       <form onSubmit={apply} className="card grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <div className="sm:col-span-2">
           <label>Search (invoice, customer, mobile, item name/code)</label>
-          <input value={f.q} onChange={(e) => set("q", e.target.value)} placeholder="Search..." />
+          <input {...bad("q")} value={f.q} onChange={(e) => set("q", e.target.value)} placeholder="Search..." />{msg("q")}
         </div>
         <div>
           <label>Date range</label>
@@ -104,11 +114,11 @@ export default function BillsPage() {
         </div>
         <div className="grid grid-cols-2 gap-2">
           <div><label>From</label><input type="date" value={f.from} onChange={(e) => setF((p) => ({ ...p, from: e.target.value, range: "" }))} /></div>
-          <div><label>To</label><input type="date" value={f.to} onChange={(e) => setF((p) => ({ ...p, to: e.target.value, range: "" }))} /></div>
+          <div><label>To</label><input {...bad("to")} type="date" min={f.from || undefined} value={f.to} onChange={(e) => setF((p) => ({ ...p, to: e.target.value, range: "" }))} />{msg("to")}</div>
         </div>
         <div className="grid grid-cols-2 gap-2">
-          <div><label>Min amount</label><input value={f.minAmount} inputMode="decimal" onChange={(e) => set("minAmount", e.target.value)} /></div>
-          <div><label>Max amount</label><input value={f.maxAmount} inputMode="decimal" onChange={(e) => set("maxAmount", e.target.value)} /></div>
+          <div><label>Min amount</label><input {...bad("minAmount")} value={f.minAmount} inputMode="decimal" maxLength={12} onChange={(e) => set("minAmount", e.target.value)} />{msg("minAmount")}</div>
+          <div><label>Max amount</label><input {...bad("maxAmount")} value={f.maxAmount} inputMode="decimal" maxLength={12} onChange={(e) => set("maxAmount", e.target.value)} />{msg("maxAmount")}</div>
         </div>
         <div>
           <label>Payment method</label>
@@ -147,7 +157,7 @@ export default function BillsPage() {
         </div>
         <div className="flex items-end gap-2">
           <button className="btn btn-primary">Apply</button>
-          <button type="button" className="btn" onClick={() => { setF(EMPTY); setApplied(EMPTY); setPage(1); setError(""); }}>Reset</button>
+          <button type="button" className="btn" onClick={() => { setF(EMPTY); setApplied(EMPTY); setPage(1); setError(""); setSubmitted(false); }}>Reset</button>
         </div>
       </form>
 

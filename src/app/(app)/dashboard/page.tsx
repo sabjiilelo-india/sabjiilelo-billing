@@ -9,6 +9,7 @@ import { formatINR } from "@/lib/money";
 
 interface Stats {
   date: string;
+  maxDate: string;
   todaySales: number;
   todayBills: number;
   averageBill: number;
@@ -30,20 +31,23 @@ interface Recent {
 }
 
 export default function DashboardPage() {
+  const [day, setDay] = useState<"today" | "yesterday" | "custom">("today");
   const [date, setDate] = useState("");
+  const [maxDate, setMaxDate] = useState("");
   const [stats, setStats] = useState<Stats | null>(null);
   const [recent, setRecent] = useState<Recent[]>([]);
   const [error, setError] = useState("");
 
   useEffect(() => {
     setError("");
+    const query = day === "custom" ? (date ? `?date=${date}` : "") : `?day=${day}`;
     Promise.all([
-      api<Stats>(`/api/dashboard/stats${date ? `?date=${date}` : ""}`),
+      api<Stats>(`/api/dashboard/stats${query}`),
       api<{ bills: Recent[] }>("/api/dashboard/recent-bills"),
     ])
-      .then(([s, r]) => { setStats(s); setRecent(r.bills); })
+      .then(([s, r]) => { setStats(s); setRecent(r.bills); setMaxDate(s.maxDate); })
       .catch((e) => setError(e instanceof Error ? e.message : "Could not load the dashboard"));
-  }, [date]);
+  }, [day, date]);
 
   const cards = stats && [
     ["Sales", formatINR(stats.todaySales)],
@@ -58,7 +62,33 @@ export default function DashboardPage() {
     <div className="space-y-4">
       <div className="flex flex-wrap items-center gap-2">
         <h1 className="page-title mr-auto">Dashboard</h1>
-        <input type="date" className="!w-auto" value={date} onChange={(e) => setDate(e.target.value)} aria-label="Reporting date" />
+        <div className="inline-flex overflow-hidden rounded-lg border border-slate-300 bg-white text-sm font-medium" role="group" aria-label="Day">
+          {(["today", "yesterday"] as const).map((d) => (
+            <button
+              key={d}
+              type="button"
+              aria-pressed={day === d}
+              onClick={() => { setDay(d); setDate(""); }}
+              className={`px-3.5 py-2 capitalize ${day === d ? "bg-brand-700 text-white" : "hover:bg-slate-100"}`}
+            >
+              {d}
+            </button>
+          ))}
+        </div>
+        <input
+          type="date"
+          className="!w-auto"
+          value={day === "custom" ? date : ""}
+          max={maxDate || undefined}
+          onChange={(e) => {
+            const v = e.target.value;
+            if (!v) return;
+            if (maxDate && v > maxDate) return void setError("Future dates are not available");
+            setDate(v);
+            setDay("custom");
+          }}
+          aria-label="Pick another date"
+        />
         <Link href="/billing/new" className="btn btn-primary">Create bill</Link>
         <Link href="/bills" className="btn">All bills</Link>
       </div>
@@ -88,7 +118,7 @@ export default function DashboardPage() {
 
           <div className="grid gap-4 lg:grid-cols-2">
             <section className="card">
-              <h2 className="mb-2 font-semibold">Payment methods (today)</h2>
+              <h2 className="mb-2 font-semibold">Payment methods ({stats.date})</h2>
               {stats.paymentSummary.length === 0 ? <p className="text-sm text-slate-500">No payments yet.</p> : (
                 <ul className="space-y-1 text-sm">
                   {stats.paymentSummary.map((p) => (

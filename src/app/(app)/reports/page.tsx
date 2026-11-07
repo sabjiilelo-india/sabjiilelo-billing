@@ -70,8 +70,8 @@ export default function ReportsPage() {
         </div>
         {range === "custom" && (
           <>
-            <div><label>From</label><input type="date" value={from} onChange={(e) => setFrom(e.target.value)} /></div>
-            <div><label>To</label><input type="date" value={to} onChange={(e) => setTo(e.target.value)} /></div>
+            <div><label>From</label><input type="date" max={to || undefined} aria-invalid={!from} className={!from ? "!border-red-500" : ""} value={from} onChange={(e) => setFrom(e.target.value)} /></div>
+            <div><label>To</label><input type="date" min={from || undefined} aria-invalid={!to || (!!from && from > to)} className={!to || (from && from > to) ? "!border-red-500" : ""} value={to} onChange={(e) => setTo(e.target.value)} /></div>
           </>
         )}
         <div className="flex items-end">

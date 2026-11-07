@@ -55,7 +55,19 @@ function LoginForm() {
       {error && <div className="err">{error}</div>}
       <div>
         <label htmlFor="u">Username</label>
-        <input id="u" value={username} onChange={(e) => setUsername(e.target.value)} autoComplete="username" autoFocus />
+        <input
+          id="u"
+          value={username}
+          maxLength={50}
+          aria-invalid={!!errors.username}
+          className={errors.username ? "!border-red-500 focus:!ring-red-200" : ""}
+          onChange={(e) => {
+            setUsername(e.target.value);
+            if (errors.username) setErrors((p) => ({ ...p, username: undefined }));
+          }}
+          autoComplete="username"
+          autoFocus
+        />
         {errors.username && <p className="mt-1 text-xs text-red-600">{errors.username}</p>}
       </div>
       <div>
@@ -65,9 +77,14 @@ function LoginForm() {
             id="p"
             type={showPassword ? "text" : "password"}
             value={password}
-            onChange={(e) => setPassword(e.target.value)}
+            maxLength={128}
+            aria-invalid={!!errors.password}
+            onChange={(e) => {
+              setPassword(e.target.value);
+              if (errors.password) setErrors((p) => ({ ...p, password: undefined }));
+            }}
             autoComplete="current-password"
-            className="!pr-10"
+            className={`!pr-10 ${errors.password ? "!border-red-500 focus:!ring-red-200" : ""}`}
           />
           <button
             type="button"

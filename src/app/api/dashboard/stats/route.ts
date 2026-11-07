@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { route } from "@/lib/api";
 import { prisma } from "@/lib/db";
-import { DateRangeError, parseYmd, resolveRange, startOfDayUtc, todayInTz } from "@/lib/dates";
+import { DateRangeError, addDays, parseYmd, resolveRange, startOfDayUtc, todayInTz, ymdString } from "@/lib/dates";
 import { dailySeries, summarize } from "@/lib/reports";
 import { getSettings } from "@/lib/settings";
 
@@ -11,8 +11,10 @@ export const GET = route(async (req) => {
 
   // Optional reporting date (YYYY-MM-DD); defaults to today in the shop time zone.
   const dateStr = sp.get("date");
-  const ymd = dateStr ? parseYmd(dateStr) : todayInTz(tz);
+  const nowYmd = todayInTz(tz);
+  const ymd = dateStr ? parseYmd(dateStr) : sp.get("day") === "yesterday" ? addDays(nowYmd, -1) : nowYmd;
   if (!ymd) throw new DateRangeError("Invalid date");
+  if (ymdString(ymd) > ymdString(nowYmd)) throw new DateRangeError("Future dates are not available");
   const dayStart = startOfDayUtc(ymd.y, ymd.m, ymd.d, tz);
   const dayEnd = startOfDayUtc(ymd.y, ymd.m, ymd.d + 1, tz);
   const monthStart = startOfDayUtc(ymd.y, ymd.m, 1, tz);
@@ -34,7 +36,8 @@ export const GET = route(async (req) => {
     GROUP BY 1 ORDER BY 1`;
 
   return NextResponse.json({
-    date: `${ymd.y}-${String(ymd.m).padStart(2, "0")}-${String(ymd.d).padStart(2, "0")}`,
+    date: ymdString(ymd),
+    maxDate: ymdString(nowYmd),
     todaySales: today.netSales,
     todayBills: today.completedInvoices,
     averageBill: today.completedInvoices ? Math.round(today.netSales / today.completedInvoices) : 0,

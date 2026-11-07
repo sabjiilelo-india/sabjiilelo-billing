@@ -36,7 +36,7 @@ export function todayInTz(tz: string, now = new Date()): Ymd {
   return { y, m, d };
 }
 
-function addDays({ y, m, d }: Ymd, n: number): Ymd {
+export function addDays({ y, m, d }: Ymd, n: number): Ymd {
   const dt = new Date(Date.UTC(y, m - 1, d + n));
   return { y: dt.getUTCFullYear(), m: dt.getUTCMonth() + 1, d: dt.getUTCDate() };
 }
