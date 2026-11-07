@@ -65,6 +65,15 @@
   }
 }
 
+.thermal-logo {
+  image-rendering: auto;
+}
+@media print {
+  .thermal-logo {
+    image-rendering: pixelated;
+  }
+}
+
 /* Thermal receipt printing: only the receipt is visible, no page margins or headers. */
 @media print {
   body {

@@ -113,7 +113,7 @@ export default function SettingsPage() {
           {s.logo && (
             <div className="mt-2 flex items-center gap-3">
               {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={s.logo} alt="Logo" className="max-h-14 grayscale" />
+              <img src={s.logo} alt="Logo" className="max-h-16" />
               <button type="button" className="btn" onClick={() => set("logo", "")}>Remove</button>
             </div>
           )}

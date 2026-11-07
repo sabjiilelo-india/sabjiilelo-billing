@@ -21,6 +21,7 @@ export const SESSION_COOKIE = "tb_session";
 /** Supported print widths in mm (content = printable width inside the paper). Height is always automatic. */
 export const PAPER_SIZES = [
   { value: 58, label: "58 mm thermal", content: 48 },
+  { value: 72, label: "72 mm (80 mm roll: POS-80C / DCode DC3R1 driver)", content: 68 },
   { value: 76, label: "76 mm thermal", content: 66 },
   { value: 80, label: "80 mm thermal", content: 72 },
   { value: 112, label: "112 mm thermal", content: 104 },

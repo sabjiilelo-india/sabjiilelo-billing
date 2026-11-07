@@ -2,12 +2,14 @@ import { PAYMENT_LABELS, paperContentMm } from "@/lib/constants";
 import { formatNum } from "@/lib/money";
 import { formatDateTime } from "@/lib/client";
 import type { BillDto } from "@/lib/types";
+import ThermalLogo from "./ThermalLogo";
 
 interface Props {
   bill: BillDto;
   paperSize: number;
   fontSize: number;
   logo?: string;
+  onLogoReady?: () => void;
 }
 
 const qtyText = (q: string | number) => String(Number(q));
@@ -22,12 +24,14 @@ function Row({ left, right, bold }: { left: string; right: string; bold?: boolea
 }
 
 /** Black-and-white thermal receipt. Width is the paper width; height grows with content. */
-export default function ReceiptView({ bill, paperSize, fontSize, logo }: Props) {
+export default function ReceiptView({ bill, paperSize, fontSize, logo, onLogoReady }: Props) {
   const shop = bill.shopSnapshot;
   const voided = bill.billStatus === "VOIDED";
   const width = `${paperContentMm(paperSize)}mm`;
   const size = paperSize <= 58 ? Math.min(fontSize, 11) : paperSize >= 148 ? fontSize + 2 : fontSize;
   const discountTotal = bill.itemDiscount + bill.billDiscount;
+  // Logo takes half the printable width (24-50 mm): big enough to read, small enough to save paper.
+  const logoMm = Math.min(50, Math.max(24, Math.round(paperContentMm(paperSize) / 2)));
 
   return (
     <div
@@ -35,10 +39,7 @@ export default function ReceiptView({ bill, paperSize, fontSize, logo }: Props) 
       className="mx-auto bg-white p-0 font-mono text-black"
     >
       <div className="text-center">
-        {logo && (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img src={logo} alt="" className="mx-auto mb-1 max-h-14 max-w-full object-contain grayscale" />
-        )}
+        {logo && <ThermalLogo src={logo} widthMm={logoMm} onReady={onLogoReady} />}
         <div className="break-words text-[1.2em] font-bold uppercase">{shop.shopName}</div>
         {shop.address && <div className="whitespace-pre-line break-words">{shop.address}</div>}
         {shop.phone && <div>Ph: {shop.phone}</div>}

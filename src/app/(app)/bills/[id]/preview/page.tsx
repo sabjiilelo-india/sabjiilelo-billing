@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, use, useEffect, useRef, useState } from "react";
+import { Suspense, use, useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import ReceiptView from "@/components/ReceiptView";
@@ -15,6 +15,8 @@ function Preview({ id }: { id: string }) {
   const [paper, setPaper] = useState<number>(80);
   const [error, setError] = useState("");
   const autoDone = useRef(false);
+  const [logoReady, setLogoReady] = useState(false);
+  const onLogoReady = useCallback(() => setLogoReady(true), []);
 
   useEffect(() => {
     Promise.all([api<{ bill: BillDto }>(`/api/bills/${id}`), api<{ settings: SettingsDto }>("/api/settings?full=1")])
@@ -34,12 +36,12 @@ function Preview({ id }: { id: string }) {
   }
 
   useEffect(() => {
-    if (auto && bill && settings && !autoDone.current) {
+    if (auto && bill && settings && (logoReady || !settings.logo) && !autoDone.current) {
       autoDone.current = true;
       setTimeout(print, 300);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [auto, bill, settings]);
+  }, [auto, bill, settings, logoReady]);
 
   if (error) return <div className="err">{error}</div>;
   if (!bill || !settings) return <p className="text-sm text-slate-500">Loading...</p>;
@@ -64,7 +66,7 @@ function Preview({ id }: { id: string }) {
         <div id="receipt-root">
           {Array.from({ length: copies }).map((_, i) => (
             <div key={i} className="receipt-copy">
-              <ReceiptView bill={bill} paperSize={paper} fontSize={settings.fontSize} logo={settings.logo} />
+              <ReceiptView bill={bill} paperSize={paper} fontSize={settings.fontSize} logo={settings.logo} onLogoReady={onLogoReady} />
             </div>
           ))}
         </div>
