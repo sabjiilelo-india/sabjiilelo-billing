@@ -7,8 +7,8 @@ const prisma = new PrismaClient();
 
 // Brand defaults for a fresh install; existing settings are never overwritten.
 function brandDefaults() {
-  const logoPath = path.join(process.cwd(), "public", "logo-full-dark.webp");
-  const logo = "data:image/webp;base64," + readFileSync(logoPath).toString("base64");
+  const logoPath = path.join(process.cwd(), "public", "logo-receipt.png");
+  const logo = "data:image/png;base64," + readFileSync(logoPath).toString("base64");
   return {
     shopName: "Sabjii Le Lo",
     footerMessage: "Har Kisan Se Har Ghar Tak\nThank you! Visit again.",

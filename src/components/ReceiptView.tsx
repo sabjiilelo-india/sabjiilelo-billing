@@ -1,3 +1,6 @@
+"use client";
+
+import { useState } from "react";
 import { PAYMENT_LABELS, paperContentMm } from "@/lib/constants";
 import { formatNum } from "@/lib/money";
 import { formatDateTime } from "@/lib/client";
@@ -30,8 +33,10 @@ export default function ReceiptView({ bill, paperSize, fontSize, logo, onLogoRea
   const width = `${paperContentMm(paperSize)}mm`;
   const size = paperSize <= 58 ? Math.min(fontSize, 11) : paperSize >= 148 ? fontSize + 2 : fontSize;
   const discountTotal = bill.itemDiscount + bill.billDiscount;
-  // Logo takes half the printable width (24-50 mm): big enough to read, small enough to save paper.
-  const logoMm = Math.min(50, Math.max(24, Math.round(paperContentMm(paperSize) / 2)));
+  // The logo is the "Sabjii Le Lo" wordmark: wide and short, so it can use most of the printable width.
+  const logoMm = Math.min(64, Math.max(30, Math.round(paperContentMm(paperSize) * 0.8)));
+  const [logoOk, setLogoOk] = useState<boolean | null>(null); // null = still preparing
+  const showName = !logo || logoOk === false; // the wordmark already spells the shop name
 
   return (
     <div
@@ -39,8 +44,17 @@ export default function ReceiptView({ bill, paperSize, fontSize, logo, onLogoRea
       className="mx-auto bg-white p-0 font-mono text-black"
     >
       <div className="text-center">
-        {logo && <ThermalLogo src={logo} widthMm={logoMm} onReady={onLogoReady} />}
-        <div className="break-words text-[1.2em] font-bold uppercase">{shop.shopName}</div>
+        {logo && (
+          <ThermalLogo
+            src={logo}
+            widthMm={logoMm}
+            onReady={(ok) => {
+              setLogoOk(ok);
+              onLogoReady?.();
+            }}
+          />
+        )}
+        {showName && <div className="break-words text-[1.2em] font-bold uppercase">{shop.shopName}</div>}
         {shop.address && <div className="whitespace-pre-line break-words">{shop.address}</div>}
         {shop.phone && <div>Ph: {shop.phone}</div>}
         {shop.gstin && <div>GSTIN: {shop.gstin}</div>}
