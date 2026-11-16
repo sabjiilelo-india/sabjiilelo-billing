@@ -51,13 +51,25 @@ const freshDraft = (method: string): Draft => ({
   paymentMethod: method, payFull: true, amountPaid: "",
 });
 
+/** While typing: keep digits and one dot only; ".25" becomes "0.25". */
+function cleanNum(raw: string) {
+  const neg = raw.trim().startsWith("-"); // keep the sign so the validator can explain it
+  let v = raw.replace(/,/g, "").replace(/[^\d.]/g, "");
+  const i = v.indexOf(".");
+  if (i !== -1) v = v.slice(0, i + 1) + v.slice(i + 1).replace(/\./g, "");
+  if (v.startsWith(".")) v = "0" + v;
+  return neg ? "-" + v : v;
+}
+/** On blur / validation: also drop a dangling dot ("5." becomes "5"). */
+const finalNum = (raw: string) => cleanNum(raw.trim()).replace(/\.$/, "");
+
 function percentToBps(s: string) {
-  const v = s.trim();
+  const v = finalNum(s);
   if (v === "") return 0;
   if (!/^\d+(\.\d{1,2})?$/.test(v)) return NaN;
   return Math.round(Number(v) * 100);
 }
-const discountToValue = (type: DiscountType, s: string) => (type === "PERCENT" ? percentToBps(s) : rupeesToPaise(s));
+const discountToValue = (type: DiscountType, s: string) => (type === "PERCENT" ? percentToBps(s) : rupeesToPaise(finalNum(s)));
 
 // ---------------------------------------------------------------- validation
 
@@ -77,37 +89,39 @@ function validate(d: Draft, s: SettingsDto): { errors: Errors; result: BillResul
   const bump = () => { errors.count++; };
 
   const mobile = d.customerMobile.replace(/[\s-]/g, "");
-  if (mobile && !MOBILE.test(mobile)) { errors.mobile = "Enter a valid 10-digit mobile number"; bump(); }
+  if (mobile && !MOBILE.test(mobile)) { errors.mobile = "Enter a valid 10-digit Indian mobile number starting with 6-9 (optionally with +91)"; bump(); }
 
   const parsed = d.rows.map((r) => {
     const e: RowErrors = {};
-    const qty = Number(r.quantity);
-    const price = rupeesToPaise(r.rate);
-    if (!r.itemName.trim()) e.name = "Item name is required";
-    if (r.quantity.trim() === "") e.qty = "Quantity is required";
-    else if (!Number.isFinite(qty) || qty <= 0) e.qty = "Must be greater than zero";
-    else if (qty > LIMITS.maxQuantity) e.qty = "Maximum quantity is 10,000";
-    else if (!/^\d+(\.\d{1,3})?$/.test(r.quantity.trim())) e.qty = "Use at most 3 decimals";
-    else if (WHOLE_UNITS.includes(r.unit) && !Number.isInteger(qty)) e.qty = `${r.unit} must be a whole number`;
-    if (r.rate.trim() === "") e.rate = "Rate is required";
-    else if (Number.isNaN(price)) e.rate = "Enter a valid amount (max 2 decimals)";
-    else if (price <= 0) e.rate = "Must be greater than zero";
+    const qStr = finalNum(r.quantity);
+    const qty = Number(qStr);
+    const price = rupeesToPaise(finalNum(r.rate));
+    if (!r.itemName.trim()) e.name = "Enter the item name";
+    if (qStr === "") e.qty = r.quantity.trim() === "" ? "Enter the quantity" : "Enter a valid number, e.g. 0.25 or 2";
+    else if (!Number.isFinite(qty) || qty <= 0) e.qty = "Quantity must be greater than 0";
+    else if (qty > LIMITS.maxQuantity) e.qty = "Quantity cannot be more than 10,000";
+    else if (!/^\d+(\.\d{1,3})?$/.test(qStr)) e.qty = "Quantity can have at most 3 digits after the decimal point";
+    else if (WHOLE_UNITS.includes(r.unit) && !Number.isInteger(qty)) e.qty = `Unit "${r.unit}" needs a whole number (no decimals). Change the unit or enter e.g. 1, 2`;
+    if (finalNum(r.rate) === "") e.rate = r.rate.trim() === "" ? "Enter the rate per unit" : "Enter a valid amount, e.g. 40 or 40.50";
+    else if (finalNum(r.rate).startsWith("-")) e.rate = "Rate must be greater than 0";
+    else if (Number.isNaN(price)) e.rate = "Rate can have at most 2 digits after the decimal point";
+    else if (price <= 0) e.rate = "Rate must be greater than 0";
     else if (price > LIMITS.maxUnitPrice) e.rate = "Rate is too large";
 
     const dv = discountToValue(r.discountType, r.discount);
-    if (Number.isNaN(dv)) e.discount = "Enter a valid discount";
-    else if (r.discountType === "PERCENT" && dv > 10000) e.discount = "Cannot exceed 100%";
-    else if (r.discountType === "FIXED" && !e.qty && !e.rate && dv > Math.round(qty * price)) e.discount = "Exceeds the item amount";
+    if (Number.isNaN(dv)) e.discount = r.discountType === "PERCENT" ? "Enter a percentage, max 2 decimals (e.g. 5 or 2.5)" : "Enter an amount, max 2 decimals (e.g. 10 or 10.50)";
+    else if (r.discountType === "PERCENT" && dv > 10000) e.discount = "Discount percentage cannot be more than 100%";
+    else if (r.discountType === "FIXED" && !e.qty && !e.rate && dv > Math.round(qty * price)) e.discount = `Discount cannot be more than the item amount (${formatINR(Math.round(qty * price))})`;
 
     if (Object.keys(e).length) { errors.rows[r.key] = e; errors.count += Object.keys(e).length; }
     return { qty, price, dv };
   });
 
   const bd = discountToValue(d.billDiscountType, d.billDiscount);
-  const oc = rupeesToPaise(d.otherCharges);
-  if (Number.isNaN(bd)) { errors.billDiscount = "Enter a valid discount"; bump(); }
-  else if (d.billDiscountType === "PERCENT" && bd > 10000) { errors.billDiscount = "Cannot exceed 100%"; bump(); }
-  if (Number.isNaN(oc)) { errors.otherCharges = "Enter a valid amount"; bump(); }
+  const oc = rupeesToPaise(finalNum(d.otherCharges));
+  if (Number.isNaN(bd)) { errors.billDiscount = d.billDiscountType === "PERCENT" ? "Enter a percentage, max 2 decimals (e.g. 5 or 2.5)" : "Enter an amount, max 2 decimals (e.g. 10 or 10.50)"; bump(); }
+  else if (d.billDiscountType === "PERCENT" && bd > 10000) { errors.billDiscount = "Discount percentage cannot be more than 100%"; bump(); }
+  if (Number.isNaN(oc)) { errors.otherCharges = "Enter a valid amount, max 2 decimals (e.g. 20 or 20.50)"; bump(); }
 
   if (errors.count) return { errors, result: null, payload: null };
 
@@ -121,18 +135,19 @@ function validate(d: Draft, s: SettingsDto): { errors: Errors; result: BillResul
     };
     const pre = calcBill({ ...base, amountPaid: 0 });
     let paid = pre.grandTotal;
-    if (!d.payFull) {
-      paid = rupeesToPaise(d.amountPaid);
-      if (d.amountPaid.trim() === "") { errors.amountPaid = "Enter the amount received"; bump(); }
-      else if (Number.isNaN(paid)) { errors.amountPaid = "Enter a valid amount (max 2 decimals)"; bump(); }
-      else if (paid > pre.grandTotal && d.paymentMethod !== "CASH") { errors.amountPaid = "Cannot exceed the total for non-cash payments"; bump(); }
+    if (d.paymentMethod === "PENDING") paid = 0;
+    else if (!d.payFull) {
+      paid = rupeesToPaise(finalNum(d.amountPaid));
+      if (finalNum(d.amountPaid) === "") { errors.amountPaid = "Enter the amount received, or tick \"Paid in full\""; bump(); }
+      else if (Number.isNaN(paid)) { errors.amountPaid = "Enter a valid amount, max 2 decimals (e.g. 100 or 100.50)"; bump(); }
+      else if (paid > pre.grandTotal && d.paymentMethod !== "CASH") { errors.amountPaid = "For non-cash payments the amount received cannot be more than the bill total"; bump(); }
     }
     if (errors.count) return { errors, result: null, payload: null };
     const result = calcBill({ ...base, amountPaid: paid });
     return { errors, result, payload: buildPayload(d, base, paid) };
   } catch (e) {
     const msg = e instanceof CalcError ? e.message : "Invalid input";
-    if (/bill discount|Discount cannot exceed the bill/i.test(msg)) errors.billDiscount = "Exceeds the bill total";
+    if (/bill discount|Discount cannot exceed the bill/i.test(msg)) errors.billDiscount = "Discount cannot be more than the bill total";
     else errors.form = msg;
     bump();
     return { errors, result: null, payload: null };
@@ -279,7 +294,7 @@ export default function BillForm() {
 
   const r = v.result;
   const E = v.errors;
-  const cls = (msg?: string) => (msg ? "!border-red-500 focus:!ring-red-200" : "");
+  const cls = (msg?: string) => (msg ? "field-error" : "");
 
   return (
     <div className="grid gap-5 lg:grid-cols-[1fr_340px]">
@@ -346,20 +361,20 @@ export default function BillForm() {
                   <div className="col-span-4 sm:col-span-2">
                     <label>Qty *</label>
                     <input aria-invalid={!!qty} className={cls(qty)} value={row.quantity} inputMode="decimal"
-                      onBlur={() => touch(id("qty"))} onChange={(e) => updateRow(row.key, { quantity: e.target.value })} />
+                      onBlur={() => { touch(id("qty")); updateRow(row.key, { quantity: finalNum(row.quantity) }); }} onChange={(e) => updateRow(row.key, { quantity: cleanNum(e.target.value) })} />
                     <Err msg={qty} />
                   </div>
                   <div className="col-span-4 sm:col-span-2">
                     <label>Rate ({"₹"}) *</label>
                     <input aria-invalid={!!rate} className={cls(rate)} value={row.rate} inputMode="decimal" placeholder="0.00"
-                      onBlur={() => touch(id("rate"))} onChange={(e) => updateRow(row.key, { rate: e.target.value })} />
+                      onBlur={() => { touch(id("rate")); updateRow(row.key, { rate: finalNum(row.rate) }); }} onChange={(e) => updateRow(row.key, { rate: cleanNum(e.target.value) })} />
                     <Err msg={rate} />
                   </div>
                   <div className="col-span-4 sm:col-span-3">
                     <label>Discount</label>
                     <div className="flex gap-1">
                       <input aria-invalid={!!disc} className={cls(disc)} value={row.discount} inputMode="decimal"
-                        onBlur={() => touch(id("discount"))} onChange={(e) => updateRow(row.key, { discount: e.target.value })} />
+                        onBlur={() => { touch(id("discount")); updateRow(row.key, { discount: finalNum(row.discount) }); }} onChange={(e) => updateRow(row.key, { discount: cleanNum(e.target.value) })} />
                       <select className="!w-16" value={row.discountType} onChange={(e) => { touch(id("discount")); updateRow(row.key, { discountType: e.target.value as DiscountType }); }}>
                         <option value="FIXED">{"₹"}</option>
                         <option value="PERCENT">%</option>
@@ -403,7 +418,7 @@ export default function BillForm() {
               <label>Bill discount</label>
               <div className="flex gap-1">
                 <input aria-invalid={!!show("bd", E.billDiscount)} className={cls(show("bd", E.billDiscount))} value={draft.billDiscount} inputMode="decimal"
-                  onBlur={() => touch("bd")} onChange={(e) => update({ billDiscount: e.target.value })} />
+                  onBlur={() => { touch("bd"); update({ billDiscount: finalNum(draft.billDiscount) }); }} onChange={(e) => update({ billDiscount: cleanNum(e.target.value) })} />
                 <select className="!w-16" value={draft.billDiscountType} onChange={(e) => { touch("bd"); update({ billDiscountType: e.target.value as DiscountType }); }}>
                   <option value="FIXED">{"₹"}</option>
                   <option value="PERCENT">%</option>
@@ -414,7 +429,7 @@ export default function BillForm() {
             <div>
               <label>Other charges</label>
               <input aria-invalid={!!show("oc", E.otherCharges)} className={cls(show("oc", E.otherCharges))} value={draft.otherCharges} inputMode="decimal"
-                onBlur={() => touch("oc")} onChange={(e) => update({ otherCharges: e.target.value })} />
+                onBlur={() => { touch("oc"); update({ otherCharges: finalNum(draft.otherCharges) }); }} onChange={(e) => update({ otherCharges: cleanNum(e.target.value) })} />
               <Err msg={show("oc", E.otherCharges)} />
             </div>
           </div>
@@ -437,18 +452,24 @@ export default function BillForm() {
           <h2 className="font-semibold">Payment</h2>
           <div>
             <label>Method</label>
-            <select value={draft.paymentMethod} onChange={(e) => { touch("ap"); update({ paymentMethod: e.target.value }); }}>
+            <select value={draft.paymentMethod} onChange={(e) => { touch("ap"); update({ paymentMethod: e.target.value, ...(e.target.value === "PENDING" ? { payFull: false, amountPaid: "" } : {}) }); }}>
               {PAYMENT_METHODS.map((m) => <option key={m} value={m}>{PAYMENT_LABELS[m]}</option>)}
             </select>
           </div>
+          {draft.paymentMethod === "PENDING" ? (
+            <p className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+              Payment is pending: nothing is received now, and the full bill amount stays as balance due.
+            </p>
+          ) : (
           <label className="flex items-center gap-2 text-sm font-normal">
             <input type="checkbox" checked={draft.payFull} onChange={(e) => update({ payFull: e.target.checked, amountPaid: "" })} /> Paid in full
           </label>
-          {!draft.payFull && (
+          )}
+          {!draft.payFull && draft.paymentMethod !== "PENDING" && (
             <div>
               <label>Amount received ({"₹"})</label>
               <input aria-invalid={!!show("ap", E.amountPaid)} className={cls(show("ap", E.amountPaid))} value={draft.amountPaid} inputMode="decimal" placeholder="0.00"
-                onBlur={() => touch("ap")} onChange={(e) => update({ amountPaid: e.target.value })} />
+                onBlur={() => { touch("ap"); update({ amountPaid: finalNum(draft.amountPaid) }); }} onChange={(e) => update({ amountPaid: cleanNum(e.target.value) })} />
               <Err msg={show("ap", E.amountPaid)} />
             </div>
           )}
@@ -475,7 +496,7 @@ export default function BillForm() {
 }
 
 function Err({ msg }: { msg?: string }) {
-  return msg ? <p className="mt-1 text-xs text-red-600">{msg}</p> : null;
+  return msg ? <p className="mt-1 text-xs font-medium text-red-600" role="alert">{msg}</p> : null;
 }
 
 function S({ k, v }: { k: string; v: string }) {

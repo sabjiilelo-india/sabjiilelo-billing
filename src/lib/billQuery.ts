@@ -3,7 +3,7 @@ import { DateRangeError, resolveRange, type RangePreset } from "./dates";
 import { rupeesToPaise } from "./money";
 
 const PRESETS = ["today", "yesterday", "last7", "last30", "thisWeek", "lastWeek", "thisMonth", "lastMonth", "custom"];
-const PAYMENT = ["CASH", "UPI", "CARD", "BANK_TRANSFER", "OTHER"];
+const PAYMENT = ["CASH", "UPI", "CARD", "BANK_TRANSFER", "OTHER", "PENDING"];
 
 export function buildBillWhere(sp: URLSearchParams, tz: string): Prisma.BillWhereInput {
   const and: Prisma.BillWhereInput[] = [];

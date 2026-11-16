@@ -27,6 +27,9 @@
   input[type="file"] {
     @apply px-2 py-1.5;
   }
+  input[aria-invalid="true"], select[aria-invalid="true"], textarea[aria-invalid="true"], .field-error {
+    @apply border-2 border-red-500 bg-red-50 text-red-900 placeholder:text-red-300 focus:border-red-600 focus:ring-2 focus:ring-red-200;
+  }
   label {
     @apply mb-1 block text-xs font-medium text-slate-600;
   }

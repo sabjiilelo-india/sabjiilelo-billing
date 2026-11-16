@@ -44,6 +44,9 @@ export const billSchema = z.object({
   paymentMethod: z.enum(PAYMENT_METHODS),
   amountPaid: int.min(0, "Payment must not be negative"),
 }).superRefine((b, ctx) => {
+  if (b.paymentMethod === "PENDING" && b.amountPaid !== 0) {
+    ctx.addIssue({ code: "custom", path: ["amountPaid"], message: "A pending bill cannot have a payment recorded" });
+  }
   b.items.forEach((it, i) => {
     if (WHOLE_UNITS.includes(it.unit) && !Number.isInteger(it.quantity)) {
       ctx.addIssue({ code: "custom", path: ["items", i, "quantity"], message: `${it.unit} must be a whole number` });

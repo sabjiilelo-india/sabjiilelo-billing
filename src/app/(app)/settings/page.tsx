@@ -127,7 +127,7 @@ export default function SettingsPage() {
         <div>
           <label>Default payment method</label>
           <select value={s.defaultPayment} onChange={(e) => set("defaultPayment", e.target.value)}>
-            {Object.entries(PAYMENT_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+            {Object.entries(PAYMENT_LABELS).filter(([k]) => k !== "PENDING").map(([k, v]) => <option key={k} value={k}>{v}</option>)}
           </select>
         </div>
         <label className="flex items-center gap-2 self-end text-sm font-normal">
