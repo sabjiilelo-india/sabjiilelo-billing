@@ -11,7 +11,7 @@ export const PAYMENT_LABELS: Record<string, string> = {
   CARD: "Card",
   BANK_TRANSFER: "Bank Transfer",
   OTHER: "Other",
-  PENDING: "Pending (pay later)",
+  PENDING: "Pending",
 };
 
 /** Tax slabs in basis points. */
