@@ -33,6 +33,20 @@ interface Draft {
   paymentMethod: string;
   payFull: boolean;
   amountPaid: string;
+  billDate: string; // YYYY-MM-DD, "" = today
+}
+
+const localToday = () => {
+  const n = new Date();
+  return `${n.getFullYear()}-${String(n.getMonth() + 1).padStart(2, "0")}-${String(n.getDate()).padStart(2, "0")}`;
+};
+
+/** Back-dated bills keep the current time of day; today's bills use the exact current time. */
+function billDateIso(date: string) {
+  if (!date || date >= localToday()) return undefined;
+  const [y, m, d] = date.split("-").map(Number);
+  const n = new Date();
+  return new Date(y, m - 1, d, n.getHours(), n.getMinutes(), n.getSeconds()).toISOString();
 }
 
 const DRAFT_KEY = "tb_bill_draft_v1";
@@ -48,7 +62,7 @@ const freshDraft = (method: string): Draft => ({
   customerName: "", customerMobile: "", customerAddress: "",
   rows: [newRow()],
   billDiscountType: "FIXED", billDiscount: "", otherCharges: "",
-  paymentMethod: method, payFull: true, amountPaid: "",
+  paymentMethod: method, payFull: true, amountPaid: "", billDate: "",
 });
 
 /** While typing: keep digits and one dot only; ".25" becomes "0.25". */
@@ -76,6 +90,7 @@ const discountToValue = (type: DiscountType, s: string) => (type === "PERCENT" ?
 interface RowErrors { name?: string; qty?: string; rate?: string; discount?: string }
 interface Errors {
   mobile?: string;
+  billDate?: string;
   rows: Record<number, RowErrors>;
   billDiscount?: string;
   otherCharges?: string;
@@ -87,6 +102,8 @@ interface Errors {
 function validate(d: Draft, s: SettingsDto): { errors: Errors; result: BillResult | null; payload: ReturnType<typeof buildPayload> | null } {
   const errors: Errors = { rows: {}, count: 0 };
   const bump = () => { errors.count++; };
+
+  if (d.billDate && d.billDate > localToday()) { errors.billDate = "Bill date cannot be in the future"; bump(); }
 
   const mobile = d.customerMobile.replace(/[\s-]/g, "");
   if (mobile && !MOBILE.test(mobile)) { errors.mobile = "Enter a valid 10-digit Indian mobile number starting with 6-9 (optionally with +91)"; bump(); }
@@ -172,6 +189,7 @@ function buildPayload(
     otherCharges: base.otherCharges,
     paymentMethod: base.paymentMethod,
     amountPaid: paid,
+    billDate: billDateIso(d.billDate),
   };
 }
 
@@ -299,7 +317,16 @@ export default function BillForm() {
   return (
     <div className="grid gap-5 lg:grid-cols-[1fr_340px]">
       <div className="space-y-4">
-        <section className="card grid gap-3 sm:grid-cols-3">
+        <section className="card grid gap-3 sm:grid-cols-4">
+          <div>
+            <label htmlFor="bd8">Bill date</label>
+            <input
+              id="bd8" type="date" value={draft.billDate || localToday()} max={localToday()}
+              aria-invalid={!!E.billDate} className={cls(E.billDate)}
+              onChange={(e) => update({ billDate: e.target.value === localToday() ? "" : e.target.value })}
+            />
+            <Err msg={E.billDate} />
+          </div>
           <div>
             <label htmlFor="cn">Customer name (optional)</label>
             <input id="cn" value={draft.customerName} maxLength={80} onChange={(e) => update({ customerName: e.target.value })} />

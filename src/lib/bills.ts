@@ -43,7 +43,13 @@ export const billSchema = z.object({
   otherCharges: int.min(0).default(0),
   paymentMethod: z.enum(PAYMENT_METHODS),
   amountPaid: int.min(0, "Payment must not be negative"),
+  billDate: z.string().datetime().optional(),
 }).superRefine((b, ctx) => {
+  if (b.billDate) {
+    const t = new Date(b.billDate).getTime();
+    if (t > Date.now() + 5 * 60_000) ctx.addIssue({ code: "custom", path: ["billDate"], message: "Bill date cannot be in the future" });
+    else if (t < Date.now() - 5 * 366 * 86_400_000) ctx.addIssue({ code: "custom", path: ["billDate"], message: "Bill date is too far in the past" });
+  }
   if (b.paymentMethod === "PENDING" && b.amountPaid !== 0) {
     ctx.addIssue({ code: "custom", path: ["amountPaid"], message: "A pending bill cannot have a payment recorded" });
   }
@@ -118,6 +124,7 @@ export async function createBill(body: BillInputBody, userId: string) {
           paymentStatus: result.paymentStatus,
           taxEnabled: settings.taxEnabled,
           createdById: userId,
+          ...(body.billDate ? { createdAt: new Date(body.billDate) } : {}),
         },
       });
       await tx.billItem.createMany({
