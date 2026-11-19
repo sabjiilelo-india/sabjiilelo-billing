@@ -327,7 +327,7 @@ export default function BillForm() {
               onChange={(e) => update({ billDate: e.target.value === localToday() ? "" : e.target.value })}
             />
             <div className="mt-1 flex gap-1">
-              {([["Today", 0], ["Yesterday", 1], ["2 days ago", 2]] as const).map(([label, back]) => {
+              {([["Today", 0], ["Yesterday", 1]] as const).map(([label, back]) => {
                 const t = new Date();
                 t.setDate(t.getDate() - back);
                 const val = `${t.getFullYear()}-${String(t.getMonth() + 1).padStart(2, "0")}-${String(t.getDate()).padStart(2, "0")}`;
