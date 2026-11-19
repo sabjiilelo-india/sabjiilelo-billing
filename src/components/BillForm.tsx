@@ -323,8 +323,22 @@ export default function BillForm() {
             <input
               id="bd8" type="date" value={draft.billDate || localToday()} max={localToday()}
               aria-invalid={!!E.billDate} className={cls(E.billDate)}
+              onClick={(e) => { try { e.currentTarget.showPicker(); } catch {} }}
               onChange={(e) => update({ billDate: e.target.value === localToday() ? "" : e.target.value })}
             />
+            <div className="mt-1 flex gap-1">
+              {([["Today", 0], ["Yesterday", 1], ["2 days ago", 2]] as const).map(([label, back]) => {
+                const t = new Date();
+                t.setDate(t.getDate() - back);
+                const val = `${t.getFullYear()}-${String(t.getMonth() + 1).padStart(2, "0")}-${String(t.getDate()).padStart(2, "0")}`;
+                const active = (draft.billDate || localToday()) === val;
+                return (
+                  <button key={label} type="button" className={`btn !px-2 !py-0.5 text-xs ${active ? "btn-primary" : ""}`}
+                    onClick={() => update({ billDate: back === 0 ? "" : val })}>{label}</button>
+                );
+              })}
+            </div>
+            {draft.billDate && <p className="mt-1 text-xs text-amber-700">Back-dated bill</p>}
             <Err msg={E.billDate} />
           </div>
           <div>
