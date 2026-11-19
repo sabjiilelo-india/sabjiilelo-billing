@@ -124,7 +124,7 @@ export async function createBill(body: BillInputBody, userId: string) {
           paymentStatus: result.paymentStatus,
           taxEnabled: settings.taxEnabled,
           createdById: userId,
-          ...(body.billDate ? { createdAt: new Date(body.billDate) } : {}),
+          ...(body.billDate ? { invoiceDate: new Date(body.billDate) } : {}),
         },
       });
       await tx.billItem.createMany({
@@ -179,4 +179,109 @@ export async function voidBill(id: string, reason: string, userId: string) {
     await audit("BILL_VOIDED", "Bill", id, userId, { invoiceNumber: bill.invoiceNumber, reason }, tx);
     return updated;
   });
+}
+
+export async function updateBill(id: string, body: BillInputBody, userId: string) {
+  const settings = await getSettings();
+  const result = calcBill({
+    items: body.items,
+    billDiscountType: body.billDiscountType,
+    billDiscountValue: body.billDiscountValue,
+    otherCharges: body.otherCharges,
+    taxEnabled: settings.taxEnabled,
+    taxMode: settings.taxMode as "INTRA" | "INTER",
+    roundOff: settings.roundOff,
+    paymentMethod: body.paymentMethod,
+    amountPaid: body.amountPaid,
+  });
+
+  return prisma.$transaction(async (tx) => {
+    const old = await tx.bill.findUnique({ where: { id } });
+    if (!old) throw new HttpError(404, "Bill not found");
+    if (old.billStatus === "VOIDED") throw new HttpError(409, "A voided bill cannot be edited");
+
+    const updated = await tx.bill.update({
+      where: { id },
+      data: {
+        customerName: body.customerName,
+        customerMobile: body.customerMobile,
+        customerAddress: body.customerAddress,
+        subtotal: result.subtotal,
+        itemDiscount: result.itemDiscount,
+        billDiscount: result.billDiscount,
+        taxableAmount: result.taxableAmount,
+        cgst: result.cgst,
+        sgst: result.sgst,
+        igst: result.igst,
+        taxAmount: result.taxAmount,
+        otherCharges: result.otherCharges,
+        roundOff: result.roundOff,
+        grandTotal: result.grandTotal,
+        paymentMethod: body.paymentMethod,
+        amountPaid: result.amountPaid,
+        balanceDue: result.balanceDue,
+        changeGiven: result.changeGiven,
+        paymentStatus: result.paymentStatus,
+        taxEnabled: settings.taxEnabled,
+        ...(body.billDate ? { invoiceDate: new Date(body.billDate) } : {}),
+      },
+    });
+    await tx.billItem.deleteMany({ where: { billId: id } });
+    await tx.billItem.createMany({
+      data: body.items.map((it, idx) => ({
+        billId: id,
+        position: idx,
+        itemName: it.itemName,
+        itemCode: it.itemCode,
+        quantity: it.quantity,
+        unit: it.unit,
+        unitPrice: it.unitPrice,
+        discountType: it.discountType,
+        discountValue: it.discountValue,
+        discountAmount: result.items[idx].discountAmount,
+        taxRate: settings.taxEnabled ? it.taxRate : 0,
+        grossAmount: result.items[idx].grossAmount,
+        taxableAmount: result.items[idx].taxableAmount,
+        taxAmount: result.items[idx].taxAmount,
+        lineTotal: result.items[idx].lineTotal,
+      })),
+    });
+    await tx.payment.deleteMany({ where: { billId: id } });
+    if (result.amountPaid > 0) {
+      await tx.payment.create({ data: { billId: id, method: body.paymentMethod, amount: result.amountPaid } });
+    }
+    await audit(
+      "BILL_EDITED", "Bill", id, userId,
+      {
+        invoiceNumber: old.invoiceNumber,
+        before: { grandTotal: old.grandTotal, amountPaid: old.amountPaid, invoiceDate: old.invoiceDate.toISOString() },
+        after: { grandTotal: updated.grandTotal, amountPaid: updated.amountPaid, invoiceDate: updated.invoiceDate.toISOString() },
+      },
+      tx,
+    );
+    return updated;
+  }, { maxWait: 20000, timeout: 30000 });
+}
+
+/** Permanently removes a bill and everything attached to it. Only the audit entry remains. */
+export async function deleteBill(id: string, userId: string) {
+  return prisma.$transaction(async (tx) => {
+    const bill = await tx.bill.findUnique({ where: { id } });
+    if (!bill) throw new HttpError(404, "Bill not found");
+    await tx.printLog.deleteMany({ where: { billId: id } });
+    await tx.payment.deleteMany({ where: { billId: id } });
+    await tx.billItem.deleteMany({ where: { billId: id } });
+    await tx.bill.delete({ where: { id } });
+    await audit(
+      "BILL_DELETED", "Bill", id, userId,
+      {
+        invoiceNumber: bill.invoiceNumber,
+        grandTotal: bill.grandTotal,
+        billStatus: bill.billStatus,
+        invoiceDate: bill.invoiceDate.toISOString(),
+        customerName: bill.customerName,
+      },
+      tx,
+    );
+  }, { maxWait: 20000, timeout: 30000 });
 }

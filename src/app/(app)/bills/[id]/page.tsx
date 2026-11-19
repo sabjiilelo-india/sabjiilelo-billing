@@ -2,6 +2,7 @@
 
 import { use, useCallback, useEffect, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useToast } from "@/components/Toast";
 import { api, formatDateTime } from "@/lib/client";
 import { PAYMENT_LABELS } from "@/lib/constants";
@@ -19,6 +20,10 @@ interface Audit {
 export default function BillDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
   const toast = useToast();
+  const router = useRouter();
+  const [deleting, setDeleting] = useState(false);
+  const [password, setPassword] = useState("");
+  const [pwError, setPwError] = useState("");
   const [bill, setBill] = useState<BillDto | null>(null);
   const [audits, setAudits] = useState<Audit[]>([]);
   const [error, setError] = useState("");
@@ -57,6 +62,21 @@ export default function BillDetailPage({ params }: { params: Promise<{ id: strin
     }
   }
 
+  async function doDelete() {
+    if (!password) { setPwError("Enter your admin password"); return; }
+    if (!confirm(`Permanently delete ${bill?.invoiceNumber}? This cannot be undone.`)) return;
+    setPwError("");
+    setBusy(true);
+    try {
+      await api(`/api/bills/${id}`, { method: "DELETE", json: { password } });
+      toast.success("Bill deleted permanently.");
+      router.push("/bills");
+    } catch (e) {
+      setPwError(e instanceof Error ? e.message : "Could not delete the bill");
+      setBusy(false);
+    }
+  }
+
   if (!bill) return error ? <div className="err">{error}</div> : <p className="text-sm text-slate-500">Loading...</p>;
   const voided = bill.billStatus === "VOIDED";
   const tz = bill.shopSnapshot.timeZone;
@@ -71,7 +91,9 @@ export default function BillDetailPage({ params }: { params: Promise<{ id: strin
           </span>
         </h1>
         <Link className="btn btn-primary" href={`/bills/${id}/preview`}>Print / Reprint</Link>
-        {!voided && <button className="btn btn-danger" onClick={() => setVoiding(true)}>Void bill</button>}
+        {!voided && <Link className="btn" href={`/bills/${id}/edit`}>Edit bill</Link>}
+        {!voided && <button className="btn btn-danger" onClick={() => { setVoiding(true); setDeleting(false); }}>Void bill</button>}
+        <button className="btn btn-danger" onClick={() => { setDeleting(true); setVoiding(false); }}>Delete permanently</button>
         <Link className="btn" href="/bills">Back</Link>
       </div>
       {error && <div className="err">{error}</div>}
@@ -91,6 +113,24 @@ export default function BillDetailPage({ params }: { params: Promise<{ id: strin
           <div className="flex gap-2">
             <button className="btn btn-danger" disabled={busy} onClick={doVoid}>{busy ? "Voiding..." : "Confirm void"}</button>
             <button className="btn" onClick={() => { setVoiding(false); setError(""); }}>Keep bill</button>
+          </div>
+        </div>
+      )}
+
+      {deleting && (
+        <div className="card space-y-2 border-red-300">
+          <p className="text-sm font-medium text-red-700">
+            Permanently delete {bill.invoiceNumber}? The bill, its items and payments are removed for good and will disappear from all reports. This cannot be undone.
+            If you only want to cancel it, use Void instead.
+          </p>
+          <label htmlFor="delpw">Admin password</label>
+          <input id="delpw" type="password" autoComplete="current-password" value={password} autoFocus aria-invalid={!!pwError}
+            className={pwError ? "!border-red-500" : ""} onChange={(e) => { setPassword(e.target.value); setPwError(""); }}
+            onKeyDown={(e) => { if (e.key === "Enter") doDelete(); }} />
+          {pwError && <p className="text-xs text-red-600" role="alert">{pwError}</p>}
+          <div className="flex gap-2">
+            <button className="btn btn-danger" disabled={busy} onClick={doDelete}>{busy ? "Deleting..." : "Delete permanently"}</button>
+            <button className="btn" disabled={busy} onClick={() => { setDeleting(false); setPassword(""); setPwError(""); }}>Keep bill</button>
           </div>
         </div>
       )}

@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { calcBill, CalcError, LIMITS, type BillResult, type DiscountType } from "@/lib/calc";
 import { PAYMENT_LABELS, PAYMENT_METHODS, TAX_RATES, UNITS, WHOLE_UNITS } from "@/lib/constants";
-import { formatINR, rupeesToPaise } from "@/lib/money";
+import { formatINR, paiseToRupees, rupeesToPaise } from "@/lib/money";
 import { api, ApiError } from "@/lib/client";
 import type { BillDto, SettingsDto } from "@/lib/types";
 import { useToast } from "./Toast";
@@ -193,9 +193,32 @@ function buildPayload(
   };
 }
 
+/** Turns a saved bill back into editable form state. */
+function draftFromBill(b: BillDto, tz: string): Draft {
+  const date = new Intl.DateTimeFormat("en-CA", { timeZone: tz, year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date(b.invoiceDate));
+  const r = (p: number) => (p ? paiseToRupees(p) : "");
+  return {
+    idempotencyKey: crypto.randomUUID(),
+    customerName: b.customerName, customerMobile: b.customerMobile, customerAddress: b.customerAddress,
+    rows: b.items.map((it) => ({
+      key: keySeq++, itemName: it.itemName, itemCode: it.itemCode, quantity: String(Number(it.quantity)), unit: it.unit,
+      rate: paiseToRupees(it.unitPrice), discountType: it.discountType,
+      discount: it.discountType === "PERCENT" ? String(it.discountValue / 100) : r(it.discountValue),
+      taxRate: it.taxRate,
+    })),
+    billDiscountType: "FIXED", billDiscount: r(b.billDiscount), otherCharges: r(b.otherCharges),
+    paymentMethod: b.paymentMethod,
+    payFull: b.paymentMethod !== "PENDING" && b.balanceDue === 0 && b.changeGiven === 0,
+    amountPaid: b.paymentMethod === "PENDING" || (b.balanceDue === 0 && b.changeGiven === 0) ? "" : paiseToRupees(b.amountPaid),
+    billDate: date === localToday() ? "" : date,
+  };
+}
+
 // ---------------------------------------------------------------- component
 
-export default function BillForm() {
+export default function BillForm({ bill }: { bill?: BillDto } = {}) {
+  const editing = !!bill;
+  const initialDate = useRef("");
   const router = useRouter();
   const toast = useToast();
   const [settings, setSettings] = useState<SettingsDto | null>(null);
@@ -211,6 +234,12 @@ export default function BillForm() {
     api<{ settings: SettingsDto }>("/api/settings")
       .then(({ settings }) => {
         setSettings(settings);
+        if (bill) {
+          const d = draftFromBill(bill, bill.shopSnapshot.timeZone);
+          initialDate.current = d.billDate;
+          setDraft(d);
+          return;
+        }
         let saved: Draft | null = null;
         try {
           saved = JSON.parse(localStorage.getItem(DRAFT_KEY) ?? "null");
@@ -226,7 +255,7 @@ export default function BillForm() {
   }, []);
 
   useEffect(() => {
-    if (!draft) return;
+    if (!draft || editing) return;
     try {
       localStorage.setItem(DRAFT_KEY, JSON.stringify(draft));
     } catch {}
@@ -273,16 +302,21 @@ export default function BillForm() {
       try {
         localStorage.removeItem(DRAFT_KEY);
       } catch {}
-      toast.success(invoice ? `Bill ${invoice} saved successfully.` : "Bill saved successfully.");
-      router.push(`/bills/${id}/preview${settings?.autoPreview === false ? "" : "?auto=1"}`);
+      toast.success(invoice ? `Bill ${invoice} ${editing ? "updated" : "saved"} successfully.` : "Bill saved successfully.");
+      router.push(editing ? `/bills/${id}` : `/bills/${id}/preview${settings?.autoPreview === false ? "" : "?auto=1"}`);
     };
     try {
-      const { bill } = await api<{ bill: BillDto }>("/api/bills", { method: "POST", json: v.payload });
-      done(bill.id, bill.invoiceNumber);
+      if (editing) {
+        const payload = { ...v.payload, billDate: draft.billDate === initialDate.current ? undefined : (v.payload.billDate ?? new Date().toISOString()) };
+        const { bill: saved } = await api<{ bill: { id: string; invoiceNumber: string } }>(`/api/bills/${bill!.id}`, { method: "PUT", json: payload });
+        return done(saved.id, saved.invoiceNumber);
+      }
+      const { bill: created } = await api<{ bill: BillDto }>("/api/bills", { method: "POST", json: v.payload });
+      done(created.id, created.invoiceNumber);
     } catch (e) {
       let msg = e instanceof Error ? e.message : "Could not save the bill";
       // After a network failure the save may still have succeeded: ask the server before retrying.
-      if (e instanceof ApiError && e.status === 0) {
+      if (!editing && e instanceof ApiError && e.status === 0) {
         try {
           const { bill } = await api<{ bill: { id: string; invoiceNumber: string } | null }>(`/api/bills?idempotencyKey=${draft.idempotencyKey}`);
           if (bill) return done(bill.id, bill.invoiceNumber);
@@ -326,18 +360,6 @@ export default function BillForm() {
               onClick={(e) => { try { e.currentTarget.showPicker(); } catch {} }}
               onChange={(e) => update({ billDate: e.target.value === localToday() ? "" : e.target.value })}
             />
-            <div className="mt-1 flex gap-1">
-              {([["Today", 0], ["Yesterday", 1]] as const).map(([label, back]) => {
-                const t = new Date();
-                t.setDate(t.getDate() - back);
-                const val = `${t.getFullYear()}-${String(t.getMonth() + 1).padStart(2, "0")}-${String(t.getDate()).padStart(2, "0")}`;
-                const active = (draft.billDate || localToday()) === val;
-                return (
-                  <button key={label} type="button" className={`btn !px-2 !py-0.5 text-xs ${active ? "btn-primary" : ""}`}
-                    onClick={() => update({ billDate: back === 0 ? "" : val })}>{label}</button>
-                );
-              })}
-            </div>
             {draft.billDate && <p className="mt-1 text-xs text-amber-700">Back-dated bill</p>}
             <Err msg={E.billDate} />
           </div>
@@ -527,9 +549,11 @@ export default function BillForm() {
         {error && <div className="err" role="alert">{error}</div>}
         <div className="flex gap-2">
           <button type="button" className="btn btn-primary flex-1" disabled={busy} onClick={submit}>
-            {busy ? "Saving..." : "Generate bill"}
+            {busy ? "Saving..." : editing ? "Save changes" : "Generate bill"}
           </button>
-          <button type="button" className="btn" disabled={busy} onClick={clearForm}>Clear</button>
+          {editing
+            ? <button type="button" className="btn" disabled={busy} onClick={() => { dirty.current = false; router.push(`/bills/${bill!.id}`); }}>Cancel</button>
+            : <button type="button" className="btn" disabled={busy} onClick={clearForm}>Clear</button>}
         </div>
       </aside>
     </div>
